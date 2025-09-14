@@ -16,7 +16,7 @@
   button{padding:8px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.25);background:#161616;color:#fff;cursor:pointer;font-weight:600}
   button:hover{background:#1e1e1e}
   .meta{color:#bdbdbd;font-size:12px}
-  .err{color:#ff9a9a;font-size:13px;margin-top:6px;text-align:center}
+  .err{color:#ff9a9a;font-size:13px;margin-top:6px;text-align:center;max-width:92vw}
 </style>
 </head>
 <body>
@@ -33,7 +33,7 @@
   // ⚙️ Repo config
   const OWNER  = "Nguyen23Duy";
   const REPO   = "card-display";
-  const BRANCH = "uploads";      // đúng với nhánh bạn đang commit
+  const BRANCH = "uploads";      // đúng nhánh bạn commit
   const API    = `https://api.github.com/repos/${OWNER}/${REPO}/git`;
 
   const IMG  = document.getElementById("card");
@@ -41,27 +41,28 @@
   const META = document.getElementById("meta");
   const ERR  = document.getElementById("err");
 
-  async function getJSON(url) {
-    const r = await fetch(url + (url.includes("?") ? "&" : "?") + "_ts=" + Date.now(), { cache: "no-store" });
-    if (!r.ok) throw new Error(`${url} → ${r.status}`);
-    return r.json();
+  async function fetchJSON(url) {
+    const res = await fetch(url + (url.includes("?") ? "&" : "?") + "_ts=" + Date.now(), { cache: "no-store" });
+    const text = await res.text();
+    if (!res.ok) throw new Error(`HTTP ${res.status} @ ${url}\n${text}`);
+    try { return JSON.parse(text); } catch (e) { throw new Error(`Bad JSON @ ${url}\n${text}`); }
   }
 
   async function loadInstant() {
     try {
       ERR.textContent = "";
-      // 1) Lấy HEAD SHA
-      const ref = await getJSON(`${API}/ref/heads/${encodeURIComponent(BRANCH)}`);
+      // 1) HEAD SHA  (SỬA: /git/refs/heads/<branch>)
+      const ref = await fetchJSON(`${API}/refs/heads/${encodeURIComponent(BRANCH)}`);
       const headSHA = ref.object && ref.object.sha;
-      if (!headSHA) throw new Error("No head SHA");
+      if (!headSHA) throw new Error("No head SHA in refs response");
 
-      // 2) Lấy tree và tìm latest.png
-      const tree = await getJSON(`${API}/trees/${headSHA}?recursive=1`);
+      // 2) Tree → tìm latest.png
+      const tree = await fetchJSON(`${API}/trees/${headSHA}?recursive=1`);
       const entry = (tree.tree || []).find(e => e.path === "latest.png" && e.type === "blob");
       if (!entry || !entry.sha) throw new Error("latest.png not found in tree");
 
-      // 3) Lấy blob (base64) rồi gán ảnh
-      const blob = await getJSON(`${API}/blobs/${entry.sha}`);
+      // 3) Blob (base64) → gán ảnh
+      const blob = await fetchJSON(`${API}/blobs/${entry.sha}`);
       const b64  = (blob.content || "").replace(/\n/g, "");
       if (!b64) throw new Error("Empty blob content");
       IMG.src = `data:image/png;base64,${b64}`;
@@ -69,14 +70,14 @@
       META.textContent = `Blob: ${entry.sha.substring(0,7)}…  •  ${new Date().toLocaleString()}`;
     } catch (e) {
       console.error(e);
-      ERR.textContent = "Không tải được ảnh mới (Git Data API). Thử lại…";
+      ERR.textContent = "Không tải được ảnh mới (Git Data API). Chi tiết: " + e.message;
     }
   }
 
   BTN.addEventListener("click", loadInstant);
   loadInstant();
-  // refresh mỗi 2 giây (tùy nhu cầu; để 2000–5000ms cho đỡ tốn rate)
-  setInterval(loadInstant, 2000);
+  // Refresh mỗi 3–5s để tránh đụng rate limit (60 req/giờ nếu không token)
+  setInterval(loadInstant, 5000);
 </script>
 </body>
 </html>
