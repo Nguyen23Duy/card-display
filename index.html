@@ -1,45 +1,115 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <title>Latest Card</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- Hint trình duyệt hạn chế cache (Pages vẫn có CDN, ta vẫn dùng ?t=updated) -->
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
   <style>
-    body {
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    html, body {
+      height: 100%;
       margin: 0;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      height: 100vh;
-      background: black;
+      background: #000;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Arial, sans-serif;
+    }
+    .wrap {
+      min-height: 100%;
+      display: grid;
+      grid-template-rows: 1fr auto;
+      place-items: center;
+      gap: 24px;
     }
     img {
-      max-width: 90%;
-      max-height: 90%;
+      max-width: 92vw;
+      max-height: 82vh;
+      object-fit: contain;
+      border-radius: 12px;
+      border: 2px solid rgba(255,255,255,0.35);
+      box-shadow: 0 6px 28px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.06) inset;
+      background: #111;
+    }
+    .bar {
+      width: 100%;
+      display: flex;
+      justify-content: center;
+      gap: 12px;
+      padding: 14px 16px 24px;
+    }
+    button {
+      padding: 10px 14px;
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.25);
+      background: #161616;
+      color: #fff;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    button:hover { background: #1e1e1e; }
+    .meta {
+      color: #bdbdbd;
+      font-size: 12px;
+      opacity: .9;
+      align-self: center;
+    }
+    .error {
+      color: #ff8a8a;
+      font-size: 13px;
+      margin-top: 8px;
+      text-align: center;
     }
   </style>
+</head>
+<body>
+  <div class="wrap">
+    <img id="card" alt="latest card" />
+    <div class="bar">
+      <button id="btnRefresh">Refresh now</button>
+      <span id="meta" class="meta">—</span>
+    </div>
+  </div>
+  <div id="err" class="error" role="alert" aria-live="polite"></div>
+
   <script>
-    async function loadCard() {
+    const JSON_URL = "latest.json";
+    const PNG_URL  = "latest.png";
+    const img = document.getElementById("card");
+    const meta = document.getElementById("meta");
+    const err = document.getElementById("err");
+    const btn = document.getElementById("btnRefresh");
+
+    async function loadMetaAndImage() {
       try {
-        const ts = Date.now();
-        // luôn bypass cache khi fetch latest.json
-        const res = await fetch("latest.json?t=" + ts);
-        const data = await res.json();
-        const img = document.getElementById("card");
-        // thêm timestamp từ json để bypass cache ảnh
-        img.src = `latest.png?t=${data.updated}`;
+        err.textContent = "";
+        // Bypass cache khi lấy JSON
+        const r = await fetch(JSON_URL + "?t=" + Date.now(), { cache: "no-store" });
+        if (!r.ok) throw new Error(`Fetch latest.json failed: ${r.status}`);
+        const data = await r.json();
+        const updated = Number(data.updated || 0);
+        // Build URL ảnh với cache-buster từ JSON
+        const url = PNG_URL + "?t=" + updated;
+        // Nếu URL chưa đổi, vẫn ép reload bằng thêm tham số phụ
+        img.src = url + "&_=" + Date.now();
+
+        // Meta hiển thị thời gian update
+        const dt = updated ? new Date(updated * 1000) : new Date();
+        meta.textContent = "Updated: " + dt.toLocaleString();
       } catch (e) {
-        console.error("Không load được latest.json", e);
+        console.error(e);
+        err.textContent = "Không thể tải latest.json hoặc ảnh. Thử lại sau…";
       }
     }
 
-    // gọi khi load trang và refresh mỗi 5 giây
-    window.onload = () => {
-      loadCard();
-      setInterval(loadCard, 5000);
-    };
+    btn.addEventListener("click", loadMetaAndImage);
+
+    // Tải ngay khi mở trang
+    loadMetaAndImage();
+    // Tự refresh mỗi 5 giây
+    setInterval(loadMetaAndImage, 5000);
   </script>
-</head>
-<body>
-  <img id="card" src="" alt="Card">
 </body>
 </html>
