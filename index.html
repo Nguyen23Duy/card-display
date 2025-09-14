@@ -2,43 +2,32 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Card Display</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <!-- Ngăn cache cứng của trình duyệt -->
-  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
-  <meta http-equiv="Pragma" content="no-cache" />
-  <meta http-equiv="Expires" content="0" />
+  <title>Latest Card</title>
   <style>
     body {
+      margin: 0;
       display: flex;
       justify-content: center;
       align-items: center;
-      min-height: 100vh;
+      height: 100vh;
       background: black;
-      margin: 0;
     }
     img {
-      max-width: 90vw;
-      max-height: 90vh;
-      object-fit: contain;
-      border: 4px solid white;
-      border-radius: 12px;
-      box-shadow: 0 0 20px rgba(255,255,255,0.6);
+      max-width: 90%;
+      max-height: 90%;
     }
   </style>
-</head>
-<body>
-  <img id="card" src="latest.png" alt="Latest Card" />
   <script>
     function refreshImage() {
+      const ts = Date.now(); // millisecond timestamp
       const img = document.getElementById("card");
-      const ts = Date.now(); // timestamp để chống cache
-      img.src = "latest.png?t=" + ts;
+      img.src = `latest.png?t=${ts}`;
     }
-    // Refresh ngay khi load
-    refreshImage();
-    // Lặp lại mỗi 5 giây
-    setInterval(refreshImage, 5000);
+    setInterval(refreshImage, 5000); // refresh mỗi 5 giây
+    window.onload = refreshImage;
   </script>
+</head>
+<body>
+  <img id="card" src="latest.png" alt="Card">
 </body>
 </html>
