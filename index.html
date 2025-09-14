@@ -1,83 +1,106 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8" />
-<title>Latest Card (Git Data API — instant)</title>
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
-<meta http-equiv="Pragma" content="no-cache" />
-<meta http-equiv="Expires" content="0" />
+<!doctype html>
+<meta charset="utf-8">
+<title>Git Data API Debug</title>
 <style>
-  :root{color-scheme:dark}
-  html,body{height:100%;margin:0;background:#000;display:flex;align-items:center;justify-content:center}
-  #wrap{display:grid;grid-template-rows:1fr auto;gap:14px;place-items:center;width:100%}
-  img{max-width:92vw;max-height:82vh;object-fit:contain;background:#111;border-radius:12px;border:2px solid rgba(255,255,255,.35)}
-  .bar{display:flex;gap:10px;align-items:center;justify-content:center;margin-bottom:18px}
-  button{padding:8px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.25);background:#161616;color:#fff;cursor:pointer;font-weight:600}
-  button:hover{background:#1e1e1e}
-  .meta{color:#bdbdbd;font-size:12px}
-  .err{color:#ff9a9a;font-size:13px;margin-top:6px;text-align:center;max-width:92vw}
+  body{margin:0;font:14px/1.4 system-ui, -apple-system, Segoe UI, Roboto; background:#111; color:#eee}
+  .row{display:grid;grid-template-columns:1fr 1fr; gap:12px; padding:12px}
+  pre{background:#1a1a1a; color:#ddd; padding:10px; border-radius:8px; overflow:auto; max-height:40vh}
+  button{padding:8px 12px; border-radius:8px; border:1px solid #444; background:#222; color:#fff; cursor:pointer}
+  .ok{color:#8ef18e} .err{color:#ff8a8a}
+  img{max-width:40vw; max-height:40vh; background:#000; border:1px solid #333; border-radius:8px}
+  .bar{padding:12px; display:flex; gap:10px; align-items:center}
+  input{background:#1b1b1b; color:#fff; border:1px solid #333; border-radius:6px; padding:6px 8px; width:240px}
+  label{opacity:.8}
 </style>
-</head>
-<body>
-  <div id="wrap">
-    <img id="card" alt="latest card" />
-    <div class="bar">
-      <button id="btn">Refresh now</button>
-      <span id="meta" class="meta">—</span>
-    </div>
-    <div id="err" class="err" role="alert" aria-live="polite"></div>
+<div class="bar">
+  <label>Owner <input id="owner" value="Nguyen23Duy"></label>
+  <label>Repo <input id="repo" value="card-display"></label>
+  <label>Branch <input id="branch" value="uploads"></label>
+  <label>Path <input id="path" value="latest.png"></label>
+  <button id="run">RUN</button>
+</div>
+
+<div class="row">
+  <div>
+    <h3>1) refs/heads/&lt;branch&gt;</h3>
+    <div id="refStatus"></div>
+    <pre id="refOut"></pre>
   </div>
+  <div>
+    <h3>2) trees/&lt;headSHA&gt;?recursive=1</h3>
+    <div id="treeStatus"></div>
+    <pre id="treeOut"></pre>
+  </div>
+</div>
+
+<div class="row">
+  <div>
+    <h3>3) blob &lt;blobSHA&gt;</h3>
+    <div id="blobStatus"></div>
+    <pre id="blobOut"></pre>
+  </div>
+  <div>
+    <h3>Preview</h3>
+    <img id="preview" alt="(image preview)">
+  </div>
+</div>
 
 <script>
-  // ⚙️ Repo config
-  const OWNER  = "Nguyen23Duy";
-  const REPO   = "card-display";
-  const BRANCH = "uploads";      // đúng nhánh bạn commit
-  const API    = `https://api.github.com/repos/${OWNER}/${REPO}/git`;
+const refStatus = s=>document.getElementById('refStatus').innerHTML=s;
+const treeStatus = s=>document.getElementById('treeStatus').innerHTML=s;
+const blobStatus = s=>document.getElementById('blobStatus').innerHTML=s;
+const refOut = s=>document.getElementById('refOut').textContent=s;
+const treeOut = s=>document.getElementById('treeOut').textContent=s;
+const blobOut = s=>document.getElementById('blobOut').textContent=s;
 
-  const IMG  = document.getElementById("card");
-  const BTN  = document.getElementById("btn");
-  const META = document.getElementById("meta");
-  const ERR  = document.getElementById("err");
+async function fetchTxt(url){
+  const r = await fetch(url + (url.includes('?')?'&':'?') + '_ts=' + Date.now(), {cache:'no-store'});
+  const t = await r.text();
+  return {ok:r.ok, status:r.status, text:t};
+}
 
-  async function fetchJSON(url) {
-    const res = await fetch(url + (url.includes("?") ? "&" : "?") + "_ts=" + Date.now(), { cache: "no-store" });
-    const text = await res.text();
-    if (!res.ok) throw new Error(`HTTP ${res.status} @ ${url}\n${text}`);
-    try { return JSON.parse(text); } catch (e) { throw new Error(`Bad JSON @ ${url}\n${text}`); }
-  }
+async function run() {
+  const OWNER = document.getElementById('owner').value.trim();
+  const REPO = document.getElementById('repo').value.trim();
+  const BRANCH = document.getElementById('branch').value.trim();
+  const PATH = document.getElementById('path').value.trim();
+  const API = `https://api.github.com/repos/${OWNER}/${REPO}/git`;
 
-  async function loadInstant() {
-    try {
-      ERR.textContent = "";
-      // 1) HEAD SHA  (SỬA: /git/refs/heads/<branch>)
-      const ref = await fetchJSON(`${API}/refs/heads/${encodeURIComponent(BRANCH)}`);
-      const headSHA = ref.object && ref.object.sha;
-      if (!headSHA) throw new Error("No head SHA in refs response");
+  document.getElementById('preview').src = '';
+  refStatus(''); treeStatus(''); blobStatus('');
+  refOut(''); treeOut(''); blobOut('');
 
-      // 2) Tree → tìm latest.png
-      const tree = await fetchJSON(`${API}/trees/${headSHA}?recursive=1`);
-      const entry = (tree.tree || []).find(e => e.path === "latest.png" && e.type === "blob");
-      if (!entry || !entry.sha) throw new Error("latest.png not found in tree");
+  // 1) refs
+  const r1 = await fetchTxt(`${API}/refs/heads/${encodeURIComponent(BRANCH)}`);
+  refOut(r1.text);
+  refStatus(r1.ok ? `<span class="ok">OK ${r1.status}</span>` : `<span class="err">ERR ${r1.status}</span>`);
+  if (!r1.ok) return;
+  let headSHA;
+  try { headSHA = JSON.parse(r1.text).object.sha; } catch(e){ refStatus(`<span class="err">Bad JSON</span>`); return; }
 
-      // 3) Blob (base64) → gán ảnh
-      const blob = await fetchJSON(`${API}/blobs/${entry.sha}`);
-      const b64  = (blob.content || "").replace(/\n/g, "");
-      if (!b64) throw new Error("Empty blob content");
-      IMG.src = `data:image/png;base64,${b64}`;
+  // 2) tree
+  const r2 = await fetchTxt(`${API}/trees/${headSHA}?recursive=1`);
+  treeOut(r2.text);
+  treeStatus(r2.ok ? `<span class="ok">OK ${r2.status}</span>` : `<span class="err">ERR ${r2.status}</span>`);
+  if (!r2.ok) return;
+  let blobSHA = null;
+  try {
+    const obj = JSON.parse(r2.text);
+    const hit = (obj.tree||[]).find(e=>e.type==='blob' && e.path===PATH);
+    blobSHA = hit && hit.sha;
+  } catch(e){ treeStatus(`<span class="err">Bad JSON</span>`); return; }
+  if (!blobSHA){ treeStatus(`<span class="err">Không thấy ${PATH} trong tree</span>`); return; }
 
-      META.textContent = `Blob: ${entry.sha.substring(0,7)}…  •  ${new Date().toLocaleString()}`;
-    } catch (e) {
-      console.error(e);
-      ERR.textContent = "Không tải được ảnh mới (Git Data API). Chi tiết: " + e.message;
-    }
-  }
+  // 3) blob
+  const r3 = await fetchTxt(`${API}/blobs/${blobSHA}`);
+  blobOut(r3.text);
+  blobStatus(r3.ok ? `<span class="ok">OK ${r3.status}</span>` : `<span class="err">ERR ${r3.status}</span>`);
+  if (!r3.ok) return;
+  let b64;
+  try { b64 = JSON.parse(r3.text).content.replace(/\n/g,''); } catch(e){ blobStatus(`<span class="err">Bad JSON</span>`); return; }
+  document.getElementById('preview').src = `data:image/png;base64,${b64}`;
+}
 
-  BTN.addEventListener("click", loadInstant);
-  loadInstant();
-  // Refresh mỗi 3–5s để tránh đụng rate limit (60 req/giờ nếu không token)
-  setInterval(loadInstant, 5000);
+document.getElementById('run').addEventListener('click', run);
+run();
 </script>
-</body>
-</html>
