@@ -2,114 +2,71 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Latest Card</title>
+  <title>Latest Card (Fast)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <!-- Hint trình duyệt hạn chế cache (Pages vẫn có CDN, ta vẫn dùng ?t=updated) -->
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
   <style>
     :root { color-scheme: dark; }
-    * { box-sizing: border-box; }
-    html, body {
-      height: 100%;
-      margin: 0;
-      background: #000;
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Arial, sans-serif;
-    }
-    .wrap {
-      min-height: 100%;
-      display: grid;
-      grid-template-rows: 1fr auto;
-      place-items: center;
-      gap: 24px;
-    }
-    img {
-      max-width: 92vw;
-      max-height: 82vh;
-      object-fit: contain;
-      border-radius: 12px;
-      border: 2px solid rgba(255,255,255,0.35);
-      box-shadow: 0 6px 28px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.06) inset;
-      background: #111;
-    }
-    .bar {
-      width: 100%;
-      display: flex;
-      justify-content: center;
-      gap: 12px;
-      padding: 14px 16px 24px;
-    }
-    button {
-      padding: 10px 14px;
-      border-radius: 10px;
-      border: 1px solid rgba(255,255,255,0.25);
-      background: #161616;
-      color: #fff;
-      cursor: pointer;
-      font-weight: 600;
-    }
-    button:hover { background: #1e1e1e; }
-    .meta {
-      color: #bdbdbd;
-      font-size: 12px;
-      opacity: .9;
-      align-self: center;
-    }
-    .error {
-      color: #ff8a8a;
-      font-size: 13px;
-      margin-top: 8px;
-      text-align: center;
-    }
+    html,body{height:100%;margin:0;background:#000;display:flex;align-items:center;justify-content:center}
+    #wrap{display:grid;grid-template-rows:1fr auto;gap:16px;place-items:center;width:100%}
+    img{max-width:92vw;max-height:82vh;object-fit:contain;background:#111;border-radius:12px;border:2px solid rgba(255,255,255,.35)}
+    .bar{display:flex;gap:10px;align-items:center;justify-content:center;margin-bottom:18px}
+    button{padding:8px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.25);background:#161616;color:#fff;cursor:pointer;font-weight:600}
+    button:hover{background:#1e1e1e}
+    .meta{color:#bdbdbd;font-size:12px}
+    .err{color:#ff9a9a;font-size:13px;margin-top:6px;text-align:center}
   </style>
 </head>
 <body>
-  <div class="wrap">
+  <div id="wrap">
     <img id="card" alt="latest card" />
     <div class="bar">
-      <button id="btnRefresh">Refresh now</button>
+      <button id="btn">Refresh now</button>
       <span id="meta" class="meta">—</span>
     </div>
+    <div id="err" class="err" role="alert" aria-live="polite"></div>
   </div>
-  <div id="err" class="error" role="alert" aria-live="polite"></div>
 
   <script>
-    const JSON_URL = "latest.json";
-    const PNG_URL  = "latest.png";
-    const img = document.getElementById("card");
-    const meta = document.getElementById("meta");
-    const err = document.getElementById("err");
-    const btn = document.getElementById("btnRefresh");
+    // ⚙️ cấu hình raw (nhanh)
+    const OWNER  = "Nguyen23Duy";
+    const REPO   = "card-display";
+    const BRANCH = "uploads"; // nhánh bạn đang commit
+    const RAW    = `https://raw.githubusercontent.com/${OWNER}/${REPO}/${BRANCH}`;
 
-    async function loadMetaAndImage() {
+    const img  = document.getElementById("card");
+    const btn  = document.getElementById("btn");
+    const meta = document.getElementById("meta");
+    const err  = document.getElementById("err");
+
+    async function loadFast() {
       try {
         err.textContent = "";
-        // Bypass cache khi lấy JSON
-        const r = await fetch(JSON_URL + "?t=" + Date.now(), { cache: "no-store" });
-        if (!r.ok) throw new Error(`Fetch latest.json failed: ${r.status}`);
+        // luôn né cache khi lấy JSON
+        const r = await fetch(`${RAW}/latest.json?t=${Date.now()}`, { cache: "no-store" });
+        if (!r.ok) throw new Error(`latest.json ${r.status}`);
         const data = await r.json();
-        const updated = Number(data.updated || 0);
-        // Build URL ảnh với cache-buster từ JSON
-        const url = PNG_URL + "?t=" + updated;
-        // Nếu URL chưa đổi, vẫn ép reload bằng thêm tham số phụ
-        img.src = url + "&_=" + Date.now();
 
-        // Meta hiển thị thời gian update
-        const dt = updated ? new Date(updated * 1000) : new Date();
-        meta.textContent = "Updated: " + dt.toLocaleString();
+        const updated = Number(data.updated || 0);
+        const ts = updated ? updated * 1000 : Date.now();
+
+        // lấy ảnh trực tiếp từ raw + cache-buster
+        img.src = `${RAW}/latest.png?t=${ts}&_=${Date.now()}`;
+
+        // meta
+        meta.textContent = "Updated: " + new Date(ts).toLocaleString();
       } catch (e) {
         console.error(e);
-        err.textContent = "Không thể tải latest.json hoặc ảnh. Thử lại sau…";
+        err.textContent = "Không tải được dữ liệu mới (raw). Thử lại...";
       }
     }
 
-    btn.addEventListener("click", loadMetaAndImage);
-
-    // Tải ngay khi mở trang
-    loadMetaAndImage();
-    // Tự refresh mỗi 5 giây
-    setInterval(loadMetaAndImage, 5000);
+    btn.addEventListener("click", loadFast);
+    loadFast();
+    // auto refresh mỗi 3 giây (giảm nếu lo rate)
+    setInterval(loadFast, 3000);
   </script>
 </body>
 </html>
