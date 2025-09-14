@@ -1,23 +1,23 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>Latest Card (Fast)</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
-  <meta http-equiv="Pragma" content="no-cache" />
-  <meta http-equiv="Expires" content="0" />
-  <style>
-    :root { color-scheme: dark; }
-    html,body{height:100%;margin:0;background:#000;display:flex;align-items:center;justify-content:center}
-    #wrap{display:grid;grid-template-rows:1fr auto;gap:16px;place-items:center;width:100%}
-    img{max-width:92vw;max-height:82vh;object-fit:contain;background:#111;border-radius:12px;border:2px solid rgba(255,255,255,.35)}
-    .bar{display:flex;gap:10px;align-items:center;justify-content:center;margin-bottom:18px}
-    button{padding:8px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.25);background:#161616;color:#fff;cursor:pointer;font-weight:600}
-    button:hover{background:#1e1e1e}
-    .meta{color:#bdbdbd;font-size:12px}
-    .err{color:#ff9a9a;font-size:13px;margin-top:6px;text-align:center}
-  </style>
+<meta charset="UTF-8" />
+<title>Latest Card (Git Data API — instant)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="0" />
+<style>
+  :root{color-scheme:dark}
+  html,body{height:100%;margin:0;background:#000;display:flex;align-items:center;justify-content:center}
+  #wrap{display:grid;grid-template-rows:1fr auto;gap:14px;place-items:center;width:100%}
+  img{max-width:92vw;max-height:82vh;object-fit:contain;background:#111;border-radius:12px;border:2px solid rgba(255,255,255,.35)}
+  .bar{display:flex;gap:10px;align-items:center;justify-content:center;margin-bottom:18px}
+  button{padding:8px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.25);background:#161616;color:#fff;cursor:pointer;font-weight:600}
+  button:hover{background:#1e1e1e}
+  .meta{color:#bdbdbd;font-size:12px}
+  .err{color:#ff9a9a;font-size:13px;margin-top:6px;text-align:center}
+</style>
 </head>
 <body>
   <div id="wrap">
@@ -29,44 +29,54 @@
     <div id="err" class="err" role="alert" aria-live="polite"></div>
   </div>
 
-  <script>
-    // ⚙️ cấu hình raw (nhanh)
-    const OWNER  = "Nguyen23Duy";
-    const REPO   = "card-display";
-    const BRANCH = "uploads"; // nhánh bạn đang commit
-    const RAW    = `https://raw.githubusercontent.com/${OWNER}/${REPO}/${BRANCH}`;
+<script>
+  // ⚙️ Repo config
+  const OWNER  = "Nguyen23Duy";
+  const REPO   = "card-display";
+  const BRANCH = "uploads";      // đúng với nhánh bạn đang commit
+  const API    = `https://api.github.com/repos/${OWNER}/${REPO}/git`;
 
-    const img  = document.getElementById("card");
-    const btn  = document.getElementById("btn");
-    const meta = document.getElementById("meta");
-    const err  = document.getElementById("err");
+  const IMG  = document.getElementById("card");
+  const BTN  = document.getElementById("btn");
+  const META = document.getElementById("meta");
+  const ERR  = document.getElementById("err");
 
-    async function loadFast() {
-      try {
-        err.textContent = "";
-        // luôn né cache khi lấy JSON
-        const r = await fetch(`${RAW}/latest.json?t=${Date.now()}`, { cache: "no-store" });
-        if (!r.ok) throw new Error(`latest.json ${r.status}`);
-        const data = await r.json();
+  async function getJSON(url) {
+    const r = await fetch(url + (url.includes("?") ? "&" : "?") + "_ts=" + Date.now(), { cache: "no-store" });
+    if (!r.ok) throw new Error(`${url} → ${r.status}`);
+    return r.json();
+  }
 
-        const updated = Number(data.updated || 0);
-        const ts = updated ? updated * 1000 : Date.now();
+  async function loadInstant() {
+    try {
+      ERR.textContent = "";
+      // 1) Lấy HEAD SHA
+      const ref = await getJSON(`${API}/ref/heads/${encodeURIComponent(BRANCH)}`);
+      const headSHA = ref.object && ref.object.sha;
+      if (!headSHA) throw new Error("No head SHA");
 
-        // lấy ảnh trực tiếp từ raw + cache-buster
-        img.src = `${RAW}/latest.png?t=${ts}&_=${Date.now()}`;
+      // 2) Lấy tree và tìm latest.png
+      const tree = await getJSON(`${API}/trees/${headSHA}?recursive=1`);
+      const entry = (tree.tree || []).find(e => e.path === "latest.png" && e.type === "blob");
+      if (!entry || !entry.sha) throw new Error("latest.png not found in tree");
 
-        // meta
-        meta.textContent = "Updated: " + new Date(ts).toLocaleString();
-      } catch (e) {
-        console.error(e);
-        err.textContent = "Không tải được dữ liệu mới (raw). Thử lại...";
-      }
+      // 3) Lấy blob (base64) rồi gán ảnh
+      const blob = await getJSON(`${API}/blobs/${entry.sha}`);
+      const b64  = (blob.content || "").replace(/\n/g, "");
+      if (!b64) throw new Error("Empty blob content");
+      IMG.src = `data:image/png;base64,${b64}`;
+
+      META.textContent = `Blob: ${entry.sha.substring(0,7)}…  •  ${new Date().toLocaleString()}`;
+    } catch (e) {
+      console.error(e);
+      ERR.textContent = "Không tải được ảnh mới (Git Data API). Thử lại…";
     }
+  }
 
-    btn.addEventListener("click", loadFast);
-    loadFast();
-    // auto refresh mỗi 3 giây (giảm nếu lo rate)
-    setInterval(loadFast, 3000);
-  </script>
+  BTN.addEventListener("click", loadInstant);
+  loadInstant();
+  // refresh mỗi 2 giây (tùy nhu cầu; để 2000–5000ms cho đỡ tốn rate)
+  setInterval(loadInstant, 2000);
+</script>
 </body>
 </html>
