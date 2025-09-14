@@ -3,74 +3,85 @@
 <head>
   <meta charset="UTF-8">
   <title>Card Display - Always Latest</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
   <style>
-    body {
-      margin: 0;
-      background: black;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      height: 100vh;
-      color: white;
-      font-family: sans-serif;
-    }
-    img {
-      max-width: 90%;
-      max-height: 80%;
-    }
-    #meta {
-      margin-top: 12px;
-      font-size: 14px;
-      opacity: 0.7;
-    }
-    button {
-      margin-top: 10px;
-      padding: 6px 12px;
-      background: #333;
-      border: 1px solid #666;
-      color: white;
-      cursor: pointer;
-      border-radius: 4px;
-    }
+    :root { color-scheme: dark; }
+    html,body { height:100%; margin:0; background:#000; display:flex; align-items:center; justify-content:center; }
+    .wrap { display:grid; grid-template-rows:1fr auto; gap:14px; place-items:center; width:100%; }
+    img { max-width:92vw; max-height:82vh; object-fit:contain; background:#111; border-radius:12px; border:2px solid rgba(255,255,255,.35); }
+    .bar { display:flex; gap:10px; align-items:center; justify-content:center; margin-bottom:18px; color:#bbb; font:14px system-ui,-apple-system,Segoe UI,Roboto; }
+    button { padding:8px 12px; border-radius:10px; border:1px solid rgba(255,255,255,.25); background:#161616; color:#fff; cursor:pointer; font-weight:600; }
+    button:hover { background:#1e1e1e; }
+    #err { color:#ff9a9a; font:13px system-ui,-apple-system,Segoe UI,Roboto; text-align:center; max-width:92vw; }
   </style>
 </head>
 <body>
-  <img id="card" alt="Loading latest card...">
-  <div id="meta">Đang tải…</div>
-  <button onclick="showNewest()">Refresh</button>
+  <div class="wrap">
+    <img id="card" alt="latest card">
+    <div class="bar">
+      <button id="btn">Refresh now</button>
+      <span id="meta">—</span>
+    </div>
+    <div id="err" role="alert" aria-live="polite"></div>
+  </div>
 
-  <script>
-    const OWNER = "Nguyen23Duy";
-    const REPO = "card-display";
-    const BRANCH = "uploads";   // đổi sang "main" nếu bạn deploy từ main
-    const FILE = "latest.png";
+<script>
+  // ⚙️ cấu hình repo (KIỂM TRA lại nhánh và đường dẫn)
+  const OWNER  = "Nguyen23Duy";
+  const REPO   = "card-display";
+  const BRANCH = "uploads";      // nếu Pages/commit ở main thì đổi "main"
+  const PATH   = "latest.png";   // nếu không ở root, ví dụ "images/latest.png"
+  const API    = `https://api.github.com/repos/${OWNER}/${REPO}/git`;
 
-    async function showNewest() {
-      try {
-        // 1) Lấy commit mới nhất liên quan đến FILE
-        const commitsUrl = `https://api.github.com/repos/${OWNER}/${REPO}/commits?path=${encodeURIComponent(FILE)}&sha=${encodeURIComponent(BRANCH)}&per_page=1`;
-        const r = await fetch(commitsUrl, { cache: "no-store" });
-        const arr = await r.json();
-        const sha = arr[0]?.sha;
-        if (!sha) {
-          document.getElementById("meta").textContent = "Không tìm thấy commit mới nhất!";
-          return;
-        }
+  const IMG  = document.getElementById("card");
+  const META = document.getElementById("meta");
+  const ERR  = document.getElementById("err");
+  const BTN  = document.getElementById("btn");
 
-        // 2) Gắn SHA vào raw URL để load ảnh đúng commit (không cache)
-        const raw = `https://raw.githubusercontent.com/${OWNER}/${REPO}/${sha}/${FILE}`;
-        document.getElementById("card").src = raw;
-        document.getElementById("meta").textContent = `Commit: ${sha.slice(0, 7)}…`;
-      } catch (err) {
-        document.getElementById("meta").textContent = "Lỗi: " + err;
-      }
+  function qs(url){ return url + (url.includes("?") ? "&" : "?") + "_ts=" + Date.now(); }
+
+  async function getJSON(url) {
+    const r = await fetch(qs(url), { cache: "no-store" });
+    const t = await r.text();
+    if (!r.ok) throw new Error(`HTTP ${r.status} @ ${url}\n${t}`);
+    try { return JSON.parse(t); } catch(e){ throw new Error(`Bad JSON @ ${url}\n${t}`); }
+  }
+
+  async function showLatestByTree() {
+    try {
+      ERR.textContent = "";
+      META.textContent = "Loading…";
+
+      // 1) Lấy HEAD SHA của nhánh
+      const ref = await getJSON(`${API}/refs/heads/${encodeURIComponent(BRANCH)}`);
+      const headSHA = ref?.object?.sha;
+      if (!headSHA) throw new Error("Không lấy được HEAD SHA (refs). Kiểm tra BRANCH.");
+
+      // 2) Lấy tree recursive của commit đó
+      const tree = await getJSON(`${API}/trees/${headSHA}?recursive=1`);
+      const entry = (tree.tree || []).find(e => e.type === "blob" && e.path === PATH);
+      if (!entry?.sha) throw new Error(`Không thấy file "${PATH}" trong tree của nhánh ${BRANCH}.`);
+
+      // 3) Lấy blob base64 rồi hiển thị
+      const blob = await getJSON(`${API}/blobs/${entry.sha}`);
+      const b64  = (blob.content || "").replace(/\n/g, "");
+      if (!b64) throw new Error("Blob rỗng.");
+      IMG.src = `data:image/png;base64,${b64}`;
+
+      META.textContent = `Commit: ${headSHA.slice(0,7)} • Blob: ${entry.sha.slice(0,7)} • ${new Date().toLocaleString()}`;
+    } catch (e) {
+      console.error(e);
+      ERR.textContent = e.message;
+      META.textContent = "—";
     }
+  }
 
-    // Tải ngay khi mở trang
-    showNewest();
-    // Auto refresh mỗi 10s (bạn có thể giảm xuống 5s)
-    setInterval(showNewest, 10000);
-  </script>
+  BTN.addEventListener("click", showLatestByTree);
+  showLatestByTree();
+  setInterval(showLatestByTree, 5000); // 5s/lần để tránh rate-limit
+</script>
 </body>
 </html>
