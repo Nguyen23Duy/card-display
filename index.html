@@ -18,16 +18,28 @@
     }
   </style>
   <script>
-    function refreshImage() {
-      const ts = Date.now(); // millisecond timestamp
-      const img = document.getElementById("card");
-      img.src = `latest.png?t=${ts}`;
+    async function loadCard() {
+      try {
+        const ts = Date.now();
+        // luôn bypass cache khi fetch latest.json
+        const res = await fetch("latest.json?t=" + ts);
+        const data = await res.json();
+        const img = document.getElementById("card");
+        // thêm timestamp từ json để bypass cache ảnh
+        img.src = `latest.png?t=${data.updated}`;
+      } catch (e) {
+        console.error("Không load được latest.json", e);
+      }
     }
-    setInterval(refreshImage, 5000); // refresh mỗi 5 giây
-    window.onload = refreshImage;
+
+    // gọi khi load trang và refresh mỗi 5 giây
+    window.onload = () => {
+      loadCard();
+      setInterval(loadCard, 5000);
+    };
   </script>
 </head>
 <body>
-  <img id="card" src="latest.png" alt="Card">
+  <img id="card" src="" alt="Card">
 </body>
 </html>
